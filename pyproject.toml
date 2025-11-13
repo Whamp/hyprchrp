@@ -17,3 +17,6 @@ dependencies = [
     "onnxruntime>=1.15.0",
     "onnx-asr>=0.7.0",
 ]
+[tool.setuptools.packages.find]
+# ... other find settings
+exclude = ["chirp", "chirp.*"]
