@@ -14,8 +14,8 @@ class ConfigManager:
     def __init__(self):
         # Default configuration values - minimal set for hyprwhspr
         self.default_config = {
-            'primary_shortcut': 'SUPER+ALT+D',
-            'stt_backend': 'whisper',  # "whisper" or "parakeet"
+            'primary_shortcut': 'Ctrl+Shift',  # Default primary shortcut
+            'stt_backend': 'parakeet',  # "whisper" or "parakeet"
             'model': 'base',
             'parakeet_model': 'nemo-parakeet-tdt-0.6b-v3',  # Default Parakeet model
             'parakeet_model_path': None,  # Custom path override for Parakeet models
