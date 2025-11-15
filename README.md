@@ -22,7 +22,7 @@ all local | waybar integration | audio feedback | auto-paste | cpu-first Parakee
 
 > 🔐 **PRIVATE**: hyprchrp is local and never reads any clipboard / audio content 
 
-> ℹ️ **Fork note:** HyprChrp is a hard fork of the original hyprwhspr project, layering Parakeet V3 ONNX-ASR support on top of the existing Whisper + pywhispercpp stack.
+> ℹ️ **Fork note:** hyprchrp is a hard fork of the original hyprwhspr project, layering Parakeet V3 ONNX-ASR support on top of the existing Whisper + pywhispercpp stack.
 
 ## Quick start
 
