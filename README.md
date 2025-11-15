@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-all local | waybar integration | audio feedback | auto-paste | cpu or gpu | easy setup
+all local | waybar integration | audio feedback | auto-paste | cpu-first Parakeet | optional gpu
 </p>
 
  <p align="center">
@@ -19,8 +19,9 @@ https://github.com/user-attachments/assets/40cb1837-550c-4e6e-8d61-07ea59898f12
 ---
 
 - **Optimized for Arch Linux / Omarchy** - Seamless integration with [Omarchy](https://omarchy.org/) / [Hyprland](https://github.com/hyprwm/Hyprland) & [Waybar](https://github.com/Alexays/Waybar)
-- **Whisper-powered** - State-of-the-art speech recognition via [OpenAI's Whisper](https://github.com/openai/whisper)
-- **Cross-platform GPU support** - Automatic detection and acceleration for NVIDIA (CUDA) / AMD (ROCm) 
+- **Parakeet V3 (CPU-only)** - Whisper-large-level accuracy on plain CPUs via [ONNX-ASR](https://github.com/istvank/onnx-asr) + ONNX Runtime (no GPU needed)
+- **Dual backends (Parakeet or Whisper)** - Choose Parakeet for zero-GPU installs or [OpenAI's Whisper](https://github.com/openai/whisper) via pywhispercpp when you want CUDA/ROCm/Vulkan acceleration
+- **Cross-platform GPU support (Whisper backend)** - Automatic detection and acceleration for NVIDIA (CUDA) / AMD (ROCm) when you opt into Whisper
 - **Hot model loading** - pywhispercpp backend keeps models in memory for _fast_ transcription
 - **Word overrides** - Customize transcriptions, prompt and corrections
 - **Run as user** - Runs in user space, just sudo once for the installer
@@ -32,8 +33,9 @@ https://github.com/user-attachments/assets/40cb1837-550c-4e6e-8d61-07ea59898f12
 ### Prerequisites
 
 - **[Omarchy](https://omarchy.org/)** or **[Arch Linux](https://archlinux.org/)**
-- **NVIDIA GPU** (optional, for CUDA acceleration)
-- **AMD GPU** (optional, for ROCm acceleration)
+- **No discrete GPU required** – Parakeet V3 runs entirely on CPU via ONNX Runtime
+- **NVIDIA GPU** (optional, for CUDA acceleration when using the Whisper backend)
+- **AMD GPU** (optional, for ROCm acceleration when using the Whisper backend)
 
 ### Installation
 
@@ -81,16 +83,35 @@ Any snags, please [create an issue](https://github.com/goodroot/hyprwhspr/issues
 
 Edit `~/.config/hyprwhspr/config.json`:
 
-**Minimal config** - only 2 essential options:
+**Minimal config** - only the essentials:
 
 ```jsonc
 {
     "primary_shortcut": "SUPER+ALT+D",
-    "model": "base.en"
+    "stt_backend": "parakeet",        // "parakeet" (CPU-only) or "whisper"
+    "model": "base.en",              // Whisper backend model (ignored by Parakeet)
+    "parakeet_model": "nemo-parakeet-tdt-0.6b-v3"
 }
 ```
 
-> For choice of model and languages, see [model instructions](https://github.com/goodroot/hyprwhspr/tree/main?tab=readme-ov-file#whisper-models).
+> `model` controls the Whisper backend, while `parakeet_model` controls the Parakeet backend. For Whisper model choices, see [model instructions](https://github.com/goodroot/hyprwhspr/tree/main?tab=readme-ov-file#whisper-models).
+
+### Parakeet configuration
+
+```jsonc
+{
+    "stt_backend": "parakeet",
+    "parakeet_model": "nemo-parakeet-tdt-0.6b-v3",   // Default CPU-only model (auto-downloads ~3.2 GB)
+    "parakeet_model_path": null,                      // Optional custom directory with encoder/decoder/vocab files
+    "parakeet_use_quantized": false                   // true -> use "-int8" quantized model for lower RAM/CPU
+}
+```
+
+- **`parakeet_model`** – symbolic model name handled by `onnx-asr`. Leave at default to auto-download.
+- **`parakeet_model_path`** – point to a local folder if you manually manage ONNX files (encoder, decoder, vocab).
+- **`parakeet_use_quantized`** – appends `-int8` to the model name for a smaller quantized build (minor accuracy tradeoff).
+
+Set `stt_backend` to `"parakeet"` to make the ONNX-ASR backend the default; omit or set to `"whisper"` if you prefer the pywhispercpp path.
 
 **Custom hotkey** - extensive key support:
 
@@ -282,7 +303,37 @@ _Speech-to-text replacement list via [WhisperTux](https://github.com/cjams/whisp
 
 Increase for more CPU parallelism when using CPU; on GPU, modest values are fine.
 
+> Parakeet uses ONNX Runtime under the hood; the `threads` value is stored for future reloads, but runtime behavior may still be governed by ONNX Runtime's own scheduling.
+
+## Speech backends: Parakeet (CPU) vs Whisper (GPU-capable)
+
+hyprwhspr now supports two interchangeable speech-to-text engines via the `stt_backend` setting:
+
+- **Parakeet V3 (recommended, CPU-only):** Uses [`onnx-asr`](https://github.com/istvank/onnx-asr) with ONNX Runtime to run the `nemo-parakeet-tdt-0.6b-v3` model at Whisper-large-level accuracy on plain CPUs. First run downloads ~3.2 GB automatically, or you can point to a local model folder. Great when you want top-tier accuracy without a GPU.
+- **Whisper (pywhispercpp, GPU-capable):** Uses [`pywhispercpp`](https://github.com/abdeladim-s/pywhispercpp) for classic Whisper models (`tiny` → `large`), optionally accelerating with CUDA/ROCm/Vulkan when detected. Ideal if you already rely on Whisper models or have GPUs handy.
+
+Select the backend explicitly in your config:
+
+```jsonc
+{
+    "stt_backend": "parakeet",          // "parakeet" for ONNX-ASR or "whisper" for pywhispercpp
+    "parakeet_model": "nemo-parakeet-tdt-0.6b-v3",
+    "model": "base"                     // Still used when the Whisper backend is active
+}
+```
+
+If `stt_backend` is omitted, hyprwhspr falls back to `"whisper"` for backward compatibility—set it to `"parakeet"` to enjoy the new CPU-only backend by default.
+
+## Parakeet V3 (ONNX-ASR, CPU-only)
+
+- **Default model:** `nemo-parakeet-tdt-0.6b-v3` (~3.2 GB). Automatically downloaded by `onnx-asr` on first use.
+- **Manual install option:** Download from [Hugging Face](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) and place `encoder-model.onnx`, `decoder_joint-model.onnx`, and `vocab.txt` under `~/.local/share/hyprwhspr/models/parakeet/`, then set `parakeet_model_path` to that directory.
+- **Quantized builds:** Set `"parakeet_use_quantized": true` to use the `-int8` variant for lower RAM/CPU footprint.
+- **Smoke test:** `python3 scripts/test-parakeet.py` loads the model via onnx-asr and runs a quick recognition pass against `2086-149220-0033.wav`.
+
 ## Whisper Models 
+
+> This section applies when `"stt_backend"` is set to `"whisper"`.
 
 **Default model installed:** `ggml-base.en.bin` (~148MB) to `~/.local/share/pywhispercpp/models/`
 
@@ -355,6 +406,8 @@ Language options:
 - **`"de"`** - German transcription
 - **`"es"`** - Spanish transcription
 - **`etc.`** - Any supported language code
+
+Prefer top-tier accuracy without a GPU? Jump back to [Parakeet V3 (ONNX-ASR, CPU-only)](#parakeet-v3-onnx-asr-cpu-only) to enable the CPU backend instead.
 
 ## Troubleshooting
 
@@ -454,6 +507,22 @@ wget https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
 # Verify model path in config
 cat ~/.config/hyprwhspr/config.json | grep model
 ```
+
+**Parakeet model not found / onnx-asr errors:**
+
+```bash
+# Ensure dependencies are installed (installer handles this)
+pip install --upgrade onnx-asr onnxruntime
+
+# Verify manual model files if you set parakeet_model_path
+ls ~/.local/share/hyprwhspr/models/parakeet/
+
+# Download the official bundle if files are missing
+xdg-open https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx
+```
+
+- Confirm `parakeet_model_path` points at the folder containing `encoder-model.onnx`, `decoder_joint-model.onnx`, and `vocab.txt`.
+- Remove the directory to force `onnx-asr` to re-download if the cache is corrupted.
 
 **Stuck recording state:**
 

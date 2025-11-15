@@ -4,12 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**hyprwhspr** is a native speech-to-text application for Arch Linux/Omarchy with Hyprland desktop environment. It provides fast, accurate, and easy system-wide dictation using OpenAI's Whisper, with automatic GPU acceleration support (NVIDIA CUDA and AMD ROCm).
+**hyprwhspr** is a native speech-to-text application for Arch Linux/Omarchy with Hyprland desktop environment. It now offers dual backends: Parakeet TDT v3 via ONNX-ASR (CPU-only, Whisper-large-level accuracy) and OpenAI's Whisper via pywhispercpp (with optional CUDA/ROCm/Vulkan acceleration).
 
 **Key Features:**
 - Global hotkey dictation (Super+Alt+D by default)
 - Hot model loading via pywhispercpp backend
-- GPU acceleration support
+- CPU-only Parakeet backend powered by onnx-asr + ONNX Runtime
+- GPU acceleration support (Whisper backend)
+- Configurable STT backend selection (`stt_backend`: `parakeet` or `whisper`)
 - Waybar integration
 - Audio feedback
 - Text injection into any application
@@ -58,6 +60,7 @@ Python dependencies are managed via `requirements.txt`:
 - **Audio processing:** sounddevice, numpy, scipy
 - **Global shortcuts:** evdev, pyperclip
 - **Whisper integration:** pywhispercpp (v1.3.3)
+- **Parakeet integration:** onnxruntime (>=1.15.0), onnx-asr (>=0.7.0)
 - **System integration:** psutil, rich
 
 Dependencies are installed into a user-space virtual environment at `~/.local/share/hyprwhspr/venv/`.
@@ -80,8 +83,12 @@ Both are user-level services (no root required).
 │   └── src/                         # Core modules
 │       ├── config_manager.py        # Configuration management (JSON-based)
 │       ├── whisper_manager.py       # Speech-to-text via pywhispercpp
+│       ├── parakeet_manager.py      # Speech-to-text via onnx-asr Parakeet TDT v3
+│       ├── stt_backend.py           # Abstract interface for STT engines
+│       ├── stt_backend_factory.py   # Chooses backend (Parakeet vs Whisper)
 │       ├── audio_capture.py         # Audio recording from microphone
 │       ├── audio_manager.py         # Audio feedback (start/stop sounds)
+│       ├── audio_utils.py           # Shared audio helpers (WAV writes for Parakeet)
 │       ├── text_injector.py         # Text injection into applications
 │       ├── global_shortcuts.py      # Global keyboard shortcuts (evdev)
 │       └── logger.py                # Logging utilities
@@ -106,7 +113,7 @@ Both are user-level services (no root required).
    - `ConfigManager` - Loads config from `~/.config/hyprwhspr/config.json`
    - `AudioCapture` - Sets up audio device for recording
    - `AudioManager` - Configures audio feedback sounds
-   - `WhisperManager` - Loads Whisper model into memory
+   - `STTBackendFactory` - Creates either `ParakeetManager` (ONNX-ASR) or `WhisperManager` (pywhispercpp) based on `stt_backend`
    - `TextInjector` - Sets up text injection mechanism
    - `GlobalShortcuts` - Registers global hotkey (default: Super+Alt+D)
 
@@ -114,14 +121,14 @@ Both are user-level services (no root required).
    - User presses hotkey → `_on_shortcut_triggered()`
    - If not recording → `_start_recording()` → audio feedback → start capture
    - If recording → `_stop_recording()` → audio feedback → process audio
-   - `_process_audio()` → Whisper transcription → `_inject_text()` → paste
+   - `_process_audio()` → Active STT backend (Parakeet or Whisper) transcribes → `_inject_text()` → paste
 
 3. **System Integration:**
    - **Audio:** Uses `sounddevice` for capture, 16kHz sample rate
    - **Shortcuts:** Uses `evdev` for global keyboard monitoring
    - **Text Injection:** Clipboard-based with configurable paste method
-   - **Model Loading:** pywhispercpp keeps model hot in memory
-   - **GPU Acceleration:** Automatic detection (CUDA/ROCm/Vulkan/CPU)
+   - **Model Loading:** `ParakeetManager` streams audio via temp WAV files into onnx-asr, while `WhisperManager` keeps models hot in memory through pywhispercpp
+   - **Acceleration:** Parakeet is CPU-only via ONNX Runtime; Whisper can leverage CUDA/ROCm/Vulkan or fall back to CPU
 
 ### Configuration System
 
@@ -129,7 +136,11 @@ Both are user-level services (no root required).
 
 **Key Settings:**
 - `primary_shortcut` - Global hotkey (format: "SUPER+ALT+D")
+- `stt_backend` - Selects STT engine (`"whisper"` or `"parakeet"`; defaults to Whisper for backward compatibility)
 - `model` - Whisper model name ("base", "small", "medium", "large", etc.)
+- `parakeet_model` - Parakeet TDT v3 model alias (default `nemo-parakeet-tdt-0.6b-v3`)
+- `parakeet_model_path` - Optional path override if users manually manage ONNX files
+- `parakeet_use_quantized` - Boolean flag to request the `-int8` Parakeet build
 - `threads` - CPU thread count for processing
 - `language` - Language code (null for auto-detect)
 - `word_overrides` - Dictionary of word replacements
@@ -138,7 +149,7 @@ Both are user-level services (no root required).
 - `clipboard_behavior` - Auto-clear clipboard after injection
 - `audio_feedback` - Enable/disable sound notifications
 
-**Defaults** are defined in `config_manager.py:16-30`.
+**Defaults** are defined in `config_manager.py:16-30`. The `threads` value directly affects Whisper; Parakeet stores the value for future ONNX Runtime reloads but live behavior is governed by ONNX Runtime itself.
 
 ### Service Architecture
 
@@ -208,18 +219,21 @@ Click interactions:
 - **No test suite:** The project doesn't include automated tests
 - **No build system:** Uses simple Python script execution, no setup.py or pyproject.toml
 - **Single entry point:** All functionality flows through `lib/main.py`
-- **Hot model loading:** pywhispercpp keeps Whisper model in memory for fast transcription
+- **Dual STT backends:** `STTBackendFactory` instantiates either `WhisperManager` (pywhispercpp) or `ParakeetManager` (onnx-asr); implement `STTBackend` to add new engines
+- **Hot model loading:** Whisper backend keeps models resident via pywhispercpp; Parakeet streams audio through temp WAV files into onnx-asr/ONNX Runtime
 - **Event-driven:** Based on global shortcut events, not a GUI loop
 - **State tracking:** Simple booleans for recording/processing state
 - **No logging file:** Uses console output, logs via `logger.py` module
 - **Configuration-driven:** Behavior primarily controlled via config.json
+- **Backend smoke tests:** `scripts/test-parakeet.py` loads the Parakeet model through onnx-asr for quick verification
 
 ## Troubleshooting Resources
 
 - Service status: `systemctl --user status hyprwhspr.service ydotool.service`
 - Service logs: `journalctl --user -u hyprwhspr.service -f`
 - Audio devices: `pactl list short sources`
-- Model files: `ls -la ~/.local/share/pywhispercpp/models/`
+- Whisper model files: `ls -la ~/.local/share/pywhispercpp/models/`
+- Parakeet model bundle (manual install path): `ls -la ~/.local/share/hyprwhspr/models/parakeet/`
 - Config file: `cat ~/.config/hyprwhspr/config.json`
 - Health check: `/usr/lib/hyprwhspr/config/hyprland/hyprwhspr-tray.sh health`
 
@@ -232,6 +246,8 @@ Click interactions:
 
 **Python (in requirements.txt):**
 - pywhispercpp (1.3.3) - Whisper backend with hot model loading
+- onnxruntime (>=1.15.0) - ONNX Runtime execution provider for Parakeet backend
+- onnx-asr (>=0.7.0) - High-level ASR wrapper for Parakeet TDT v3
 - sounddevice - Audio capture
 - evdev - Global keyboard shortcuts
 - pyperclip - Clipboard access
