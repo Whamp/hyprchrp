@@ -1,5 +1,5 @@
 <h1 align="center">
-    HyprChrp (hyprchrp)
+    hyprchrp
 </h1>
 
 <p align="center">
