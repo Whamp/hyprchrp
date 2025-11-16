@@ -42,5 +42,6 @@ Thumbs.db
 config.json
 
 # new windows project files
-chirp/
+docs/
 git-upstream-instructions.md
+installation-process.md
