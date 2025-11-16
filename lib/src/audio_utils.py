@@ -3,9 +3,10 @@ Audio utility functions for hyprchrp
 Shared utilities for audio file handling
 """
 
-import numpy as np
 import wave
 from pathlib import Path
+
+import numpy as np
 
 
 def save_audio_to_wav(audio_data: np.ndarray, filename: str,

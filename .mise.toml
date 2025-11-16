@@ -22,6 +22,7 @@ test = "mise exec -- pytest"
 lint = "mise exec -- ruff check ."
 format = "mise exec -- black ."
 type-check = "mise exec -- mypy lib/"
+shell-lint = "shellcheck scripts/*.sh"
 
 # Production sync (optional uv-based pipeline)
 sync-prod = "./scripts/sync-production.sh"

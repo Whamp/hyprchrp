@@ -3,22 +3,17 @@ Parakeet manager for hyprchrp
 ONNX-based backend using onnx-asr library
 """
 
-import time
-import numpy as np
 import threading
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-try:
-    from .config_manager import ConfigManager
-    from .stt_backend import STTBackend
-    from .audio_utils import save_audio_to_wav
-    from .logger import log_info, log_error, log_warning, log_success
-except ImportError:
-    from config_manager import ConfigManager
-    from stt_backend import STTBackend
-    from audio_utils import save_audio_to_wav
-    from logger import log_info, log_error, log_warning, log_success
+import numpy as np
+
+from .audio_utils import save_audio_to_wav
+from .config_manager import ConfigManager
+from .logger import log_error, log_info, log_success, log_warning
+from .stt_backend import STTBackend
 
 
 class ParakeetManager(STTBackend):
@@ -35,8 +30,8 @@ class ParakeetManager(STTBackend):
         self.custom_model_path = self.config.get_setting('parakeet_model_path', None)
 
         # Backend-specific attributes
-        self._onnx_model = None
-        self.temp_dir = None
+        self._onnx_model: Optional[Any] = None
+        self.temp_dir: Optional[Path] = None
 
         # Thread safety for model operations
         self._model_lock = threading.Lock()
@@ -53,7 +48,7 @@ class ParakeetManager(STTBackend):
                 import onnx_asr
 
                 log_info(f"Initializing model: {self.current_model}", "onnx-asr")
-                log_info(f"Note: First-time download is ~3.2 GB", "onnx-asr")
+                log_info("Note: First-time download is ~3.2 GB", "onnx-asr")
 
                 # Load model (handles download if needed)
                 model_name = self.current_model
@@ -66,8 +61,8 @@ class ParakeetManager(STTBackend):
                 else:
                     self._onnx_model = onnx_asr.load_model(model_name)
 
-                log_success(f"Model loaded successfully", "onnx-asr")
-                log_info(f"Using onnx-asr (ONNX Runtime) for Parakeet TDT v3", "BACKEND")
+                log_success("Model loaded successfully", "onnx-asr")
+                log_info("Using onnx-asr (ONNX Runtime) for Parakeet TDT v3", "BACKEND")
 
                 self.ready = True
                 return True
@@ -79,7 +74,10 @@ class ParakeetManager(STTBackend):
             except Exception as e:
                 log_error(f"Initialization failed: {e}", "onnx-asr")
                 log_error("Parakeet model not found", "ERROR")
-                log_error("Please download from: https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx", "ERROR")
+                log_error(
+                    "Please download from: https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx",
+                    "ERROR",
+                )
                 log_error("Expected files: .onnx, .tokenizer.json, vocab.txt", "ERROR")
                 return False
 
@@ -121,6 +119,12 @@ class ParakeetManager(STTBackend):
         if len(audio_data) < min_samples:
             log_warning(f"Audio too short: {len(audio_data)} samples (minimum {min_samples})")
             return ""
+
+        if self.temp_dir is None:
+            raise RuntimeError("Temporary directory not initialized")
+
+        if self._onnx_model is None:
+            raise RuntimeError("Parakeet model not loaded")
 
         temp_filename = None
         try:
@@ -209,7 +213,7 @@ class ParakeetManager(STTBackend):
     def get_available_models(self) -> list:
         """Get list of available Parakeet models"""
         models_dir = Path.home() / '.local' / 'share' / 'hyprchrp' / 'models' / 'parakeet'
-        available_models = []
+        available_models: list[str] = []
 
         if not models_dir.exists():
             return available_models

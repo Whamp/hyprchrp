@@ -4,6 +4,7 @@ Provides a common interface for different STT engines (Whisper, Parakeet, etc.)
 """
 
 from abc import ABC, abstractmethod
+
 import numpy as np
 
 

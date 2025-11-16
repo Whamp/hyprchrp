@@ -6,10 +6,10 @@ Handles injecting transcribed text into other applications using paste strategy
 import os
 import shutil
 import subprocess
-import time
 import threading
+import time
+
 import pyperclip
-from typing import Optional
 
 
 class TextInjector:
@@ -18,11 +18,14 @@ class TextInjector:
     def __init__(self, config_manager=None):
         # Configuration
         self.config_manager = config_manager
+        self.inject_strategy = 'paste'
 
         # Initialize settings from config if available
         if self.config_manager:
             # Always use paste strategy for fast, reliable injection
-            pass
+            self.inject_strategy = (
+                self.config_manager.get_setting('inject_strategy', 'paste') or 'paste'
+            )
         else:
             # No fallback settings needed
             pass
@@ -31,7 +34,10 @@ class TextInjector:
         self.ydotool_available = self._check_ydotool()
 
         if not self.ydotool_available:
-            print("⚠️  No typing backend found (ydotool). hyprchrp requires ydotool for paste injection.")
+            print(
+                "⚠️  No typing backend found (ydotool). "
+                "hyprchrp requires ydotool for paste injection."
+            )
 
     def _check_ydotool(self) -> bool:
         """Check if ydotool is available on the system"""
@@ -57,7 +63,7 @@ class TextInjector:
             time.sleep(delay)
             self._clear_clipboard()
             print(f"📋 Clipboard cleared after {delay}s delay")
-        
+
         # Run in a separate thread to avoid blocking
         clear_thread = threading.Thread(target=clear_after_delay, daemon=True)
         clear_thread.start()
@@ -126,7 +132,7 @@ class TextInjector:
             r'\bexclamation mark\b': '!',
             r'\bcolon\b': ':',
             r'\bsemicolon\b': ';',
-            r'\bnew line\b': '\n', 
+            r'\bnew line\b': '\n',
             r'\btab\b': '\t',
             r'\bdash\b': '-',
             r'\bunderscore\b': '_',
@@ -207,7 +213,10 @@ class TextInjector:
                 if xdg:
                     env["YDOTOOL_SOCKET"] = os.path.join(xdg, ".ydotool_socket")
 
-            print(f"Injecting text with ydotool: type (delay={delay}ms) via {env.get('YDOTOOL_SOCKET','<default>')}")
+            print(
+                "Injecting text with ydotool: type (delay="
+                f"{delay}ms) via {env.get('YDOTOOL_SOCKET', '<default>')}"
+            )
             result = subprocess.run(
                 cmd,
                 input=text.encode("utf-8"),
@@ -291,7 +300,7 @@ class TextInjector:
                             ['ydotool', 'key', '29:1', '47:1', '47:0', '29:0'],
                             capture_output=True, timeout=5
                         )
-                
+
                 if result.returncode != 0:
                     stderr = (result.stderr or b"").decode("utf-8", "ignore")
                     print(f"  ydotool paste command failed: {stderr}")
@@ -305,6 +314,20 @@ class TextInjector:
             print(f"Clipboard+hotkey injection failed: {e}")
             return False
 
+    def _compute_key_delay_ms(self) -> int:
+        """Determine the key delay used for ydotool typing fallback."""
+        default_delay = 5
+        if not self.config_manager:
+            return default_delay
+
+        delay_setting = self.config_manager.get_setting('key_delay_ms', default_delay)
+        try:
+            delay_value = int(delay_setting)
+        except (TypeError, ValueError):
+            delay_value = default_delay
+
+        return max(1, delay_value)
+
     def _inject_via_clipboard(self, text: str) -> bool:
         """Fallback: copy text to clipboard if ydotool is not available."""
         try:
@@ -312,7 +335,7 @@ class TextInjector:
                 subprocess.run(["wl-copy"], input=text.encode("utf-8"), check=True)
             else:
                 pyperclip.copy(text)
-            
+
             print("Text copied to clipboard (ydotool not available for paste)")
             return True
         except Exception as e:

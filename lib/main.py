@@ -1,27 +1,20 @@
 #!/usr/bin/env python3
-"""
-hyprchrp - Voice dictation application for Hyprland (Headless Mode)
-Fast, reliable speech-to-text with instant text injection
-"""
+"""hyprchrp - Voice dictation application for Hyprland (Headless Mode).
 
-print("🚀 HYPRCHRP STARTING UP!")
-print("=" * 50)
+Fast, reliable speech-to-text with instant text injection.
+"""
 
 import sys
 import time
 from pathlib import Path
 
-# Add the src directory to the Python path
-src_path = Path(__file__).parent / 'src'
-sys.path.insert(0, str(src_path))
+from src.audio_capture import AudioCapture
+from src.audio_manager import AudioManager
+from src.config_manager import ConfigManager
+from src.global_shortcuts import GlobalShortcuts
+from src.stt_backend_factory import STTBackendFactory
+from src.text_injector import TextInjector
 
-from config_manager import ConfigManager
-from audio_capture import AudioCapture
-from whisper_manager import WhisperManager
-from stt_backend_factory import STTBackendFactory
-from text_injector import TextInjector
-from global_shortcuts import GlobalShortcuts
-from audio_manager import AudioManager
 
 class HyprChrpApp:
     """Main application class for hyprchrp voice dictation (Headless Mode)"""
@@ -74,18 +67,18 @@ class HyprChrpApp:
         try:
             print("🎤 Starting recording...")
             self.is_recording = True
-            
+
             # Write recording status to file for tray script
             self._write_recording_status(True)
-            
+
             # Play start sound
             self.audio_manager.play_start_sound()
-            
+
             # Start audio capture
             self.audio_capture.start_recording()
-            
+
             print("✅ Recording started - speak now!")
-            
+
         except Exception as e:
             print(f"❌ Failed to start recording: {e}")
             self.is_recording = False
@@ -99,21 +92,21 @@ class HyprChrpApp:
         try:
             print("🛑 Stopping recording...")
             self.is_recording = False
-            
+
             # Write recording status to file for tray script
             self._write_recording_status(False)
-            
+
             # Stop audio capture
             audio_data = self.audio_capture.stop_recording()
-            
+
             # Play stop sound
             self.audio_manager.play_stop_sound()
-            
+
             if audio_data is not None:
                 self._process_audio(audio_data)
             else:
                 print("⚠️ No audio data captured")
-                
+
         except Exception as e:
             print(f"❌ Error stopping recording: {e}")
 
@@ -129,16 +122,16 @@ class HyprChrpApp:
 
             # Transcribe audio
             transcription = self.whisper_manager.transcribe_audio(audio_data)
-            
+
             if transcription and transcription.strip():
                 self.current_transcription = transcription.strip()
                 print(f"📝 Transcription: {self.current_transcription}")
-                
+
                 # Inject text
                 self._inject_text(self.current_transcription)
             else:
                 print("⚠️ No transcription generated")
-                
+
         except Exception as e:
             print(f"❌ Error processing audio: {e}")
         finally:
@@ -158,7 +151,7 @@ class HyprChrpApp:
         try:
             status_file = Path.home() / '.config' / 'hyprchrp' / 'recording_status'
             status_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             if is_recording:
                 with open(status_file, 'w') as f:
                     f.write('true')
@@ -181,11 +174,11 @@ class HyprChrpApp:
 
         print("✅ hyprchrp initialized successfully")
         print("🎤 Listening for global shortcuts...")
-        
+
         # Start global shortcuts
         if self.global_shortcuts:
             self.global_shortcuts.start()
-        
+
         try:
             # Keep the application running
             while True:
@@ -197,7 +190,7 @@ class HyprChrpApp:
             print(f"❌ Error in main loop: {e}")
             self._cleanup()
             return False
-        
+
         return True
 
     def _cleanup(self):
@@ -213,18 +206,20 @@ class HyprChrpApp:
 
             # Save configuration
             self.config.save_config()
-            
+
             print("✅ Cleanup completed")
-            
+
         except Exception as e:
             print(f"⚠️ Error during cleanup: {e}")
 
 
 def main():
     """Main entry point"""
+    print("🚀 HYPRCHRP STARTING UP!")
+    print("=" * 50)
     print("🎤 hyprchrp")
     print("🚀 Starting hyprchrp...")
-    
+
     try:
         app = HyprChrpApp()
         app.run()

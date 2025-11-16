@@ -26,3 +26,27 @@ dev = [
     "black>=24.0",
     "mypy>=1.10",
 ]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["lib"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.13"
+namespace_packages = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pyperclip",
+    "sounddevice",
+    "pywhispercpp",
+    "pywhispercpp.*",
+    "onnx_asr",
+    "evdev",
+]
+ignore_missing_imports = true

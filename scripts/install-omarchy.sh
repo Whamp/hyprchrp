@@ -18,7 +18,6 @@ warn() { log_warning "$@"; }
 err()  { log_error "$@"; }
 
 # ----------------------- Configuration -------------------------
-PACKAGE_NAME="hyprchrp"
 INSTALL_DIR="/usr/lib/hyprchrp"  # Always read-only system files
 SERVICE_NAME="hyprchrp.service"
 YDOTOOL_UNIT="ydotool.service"
@@ -26,7 +25,6 @@ YDOTOOL_UNIT="ydotool.service"
 # Always use user space for runtime data (consistent across all installations)
 USER_BASE="${XDG_DATA_HOME:-$HOME/.local/share}/hyprchrp"
 VENV_DIR="$USER_BASE/venv"                    # Python virtual environment
-PYWHISPERCPP_MODELS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pywhispercpp/models" # pywhispercpp model dir
 USER_BIN_DIR="$HOME/.local/bin"               # User's local bin directory
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/hyprchrp"
 STATE_FILE="$STATE_DIR/install-state.json"    # Persistent installation state
@@ -316,6 +314,7 @@ setup_python_environment() {
   fi
 
   # Install dependencies from system files
+  # shellcheck source=/dev/null
   source "$VENV_DIR/bin/activate"
   local pip_bin="$VENV_DIR/bin/pip"
   "$pip_bin" install --upgrade pip wheel
@@ -648,7 +647,8 @@ WAYBAR_MODULE_CONFIG
   fi
 
   # Create backup of waybar config before modifying
-  local backup_file="$waybar_config.backup-$(date +%Y%m%d-%H%M%S)"
+  local backup_file
+  backup_file="$waybar_config.backup-$(date +%Y%m%d-%H%M%S)"
   if cp -P "$waybar_config" "$backup_file"; then
     log_info "Backup created: $backup_file"
   else
@@ -656,7 +656,7 @@ WAYBAR_MODULE_CONFIG
   fi
 
   # Use Python to safely modify the waybar config with proper JSON handling
-  "$VENV_DIR/bin/python3" -c "
+  if ! "$VENV_DIR/bin/python3" -c "
 import sys
 import json
 import os
@@ -698,9 +698,7 @@ except json.JSONDecodeError as e:
 except Exception as e:
     print(f'Error updating waybar config: {e}', file=sys.stderr)
     sys.exit(1)
-"
-
-  if [ $? -ne 0 ]; then
+"; then
     log_error "Failed to update waybar config"
     return 1
   fi
@@ -727,7 +725,7 @@ except Exception as e:
     local waybar_style="$USER_HOME/.config/waybar/style.css"
     if [ -f "$waybar_style" ] && ! grep -q "hyprchrp-style.css" "$waybar_style"; then
       # Use Python for safer CSS manipulation
-      "$VENV_DIR/bin/python3" <<EOF
+      if "$VENV_DIR/bin/python3" <<EOF
 import sys
 import os
 
@@ -759,8 +757,8 @@ except Exception as e:
     print(f"Error updating CSS file: {e}", file=sys.stderr)
     sys.exit(1)
 EOF
-      
-      if [ $? -eq 0 ]; then
+
+      then
         log_success "✓ CSS import added to waybar style.css"
       else
         log_error "✗ Failed to add CSS import to waybar style.css"
@@ -891,22 +889,47 @@ verify_permissions_and_functionality() {
     log_error "✗ /dev/uinput not accessible"; all_ok=false
   fi
 
-  groups "$ACTUAL_USER" | grep -q "\binput\b"  && log_success "✓ user in 'input'"  || { log_error "✗ user NOT in 'input'"; all_ok=false; }
-  groups "$ACTUAL_USER" | grep -q "\baudio\b"  && log_success "✓ user in 'audio'"  || { log_error "✗ user NOT in 'audio'"; all_ok=false; }
-
-  command -v ydotool >/dev/null && timeout 5s ydotool help >/dev/null 2>&1 \
-    && log_success "✓ ydotool responds" || { log_error "✗ ydotool problem"; all_ok=false; }
-
-  command -v pactl >/dev/null && pactl list short sources | grep -q input \
-    && log_success "✓ audio inputs present" || log_warning "⚠ no audio inputs detected"
-
-
-  if [ -x "$VENV_DIR/bin/python" ]; then
-    timeout 5s "$VENV_DIR/bin/python" -c "import sounddevice" >/dev/null 2>&1 \
-      && log_success "✓ Python audio libs present" || { log_error "✗ Python audio libs missing"; all_ok=false; }
+  if groups "$ACTUAL_USER" | grep -q "\binput\b"; then
+    log_success "✓ user in 'input'"
+  else
+    log_error "✗ user NOT in 'input'"
+    all_ok=false
   fi
 
-  $all_ok && return 0 || return 1
+  if groups "$ACTUAL_USER" | grep -q "\baudio\b"; then
+    log_success "✓ user in 'audio'"
+  else
+    log_error "✗ user NOT in 'audio'"
+    all_ok=false
+  fi
+
+  if command -v ydotool >/dev/null && timeout 5s ydotool help >/dev/null 2>&1; then
+    log_success "✓ ydotool responds"
+  else
+    log_error "✗ ydotool problem"
+    all_ok=false
+  fi
+
+  if command -v pactl >/dev/null && pactl list short sources | grep -q input; then
+    log_success "✓ audio inputs present"
+  else
+    log_warning "⚠ no audio inputs detected"
+  fi
+
+  if [ -x "$VENV_DIR/bin/python" ]; then
+    if timeout 5s "$VENV_DIR/bin/python" -c "import sounddevice" >/dev/null 2>&1; then
+      log_success "✓ Python audio libs present"
+    else
+      log_error "✗ Python audio libs missing"
+      all_ok=false
+    fi
+  fi
+
+  if [ "$all_ok" = true ]; then
+    return 0
+  else
+    return 1
+  fi
 }
 
 # ----------------------- Smoke test ---------------------------

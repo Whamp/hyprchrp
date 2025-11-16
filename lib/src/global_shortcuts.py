@@ -3,14 +3,13 @@ Global shortcuts handler for hyprchrp
 Manages system-wide keyboard shortcuts for dictation control
 """
 
-import threading
 import select
+import threading
 import time
-from typing import Callable, Optional, List, Set, Dict
-from pathlib import Path
+from typing import Callable, Dict, List, Optional, Set
+
 import evdev
 from evdev import InputDevice, categorize, ecodes
-
 
 # Key aliases mapping to evdev KEY_* constants
 KEY_ALIASES: dict[str, str] = {
@@ -20,13 +19,13 @@ KEY_ALIASES: dict[str, str] = {
     'shift': 'KEY_LEFTSHIFT', 'lshift': 'KEY_LEFTSHIFT',
     'super': 'KEY_LEFTMETA', 'meta': 'KEY_LEFTMETA', 'lsuper': 'KEY_LEFTMETA',
     'win': 'KEY_LEFTMETA', 'windows': 'KEY_LEFTMETA', 'cmd': 'KEY_LEFTMETA',
-    
+
     # Right-side modifiers
     'rctrl': 'KEY_RIGHTCTRL', 'rightctrl': 'KEY_RIGHTCTRL',
     'ralt': 'KEY_RIGHTALT', 'rightalt': 'KEY_RIGHTALT',
     'rshift': 'KEY_RIGHTSHIFT', 'rightshift': 'KEY_RIGHTSHIFT',
     'rsuper': 'KEY_RIGHTMETA', 'rightsuper': 'KEY_RIGHTMETA', 'rmeta': 'KEY_RIGHTMETA',
-    
+
     # Common special keys
     'enter': 'KEY_ENTER', 'return': 'KEY_ENTER',
     'backspace': 'KEY_BACKSPACE', 'bksp': 'KEY_BACKSPACE',
@@ -40,17 +39,17 @@ KEY_ALIASES: dict[str, str] = {
     'end': 'KEY_END',
     'pageup': 'KEY_PAGEUP', 'pgup': 'KEY_PAGEUP',
     'pagedown': 'KEY_PAGEDOWN', 'pgdn': 'KEY_PAGEDOWN', 'pgdown': 'KEY_PAGEDOWN',
-    
+
     # Arrow keys
     'up': 'KEY_UP', 'uparrow': 'KEY_UP',
     'down': 'KEY_DOWN', 'downarrow': 'KEY_DOWN',
     'left': 'KEY_LEFT', 'leftarrow': 'KEY_LEFT',
     'right': 'KEY_RIGHT', 'rightarrow': 'KEY_RIGHT',
-    
+
     # Lock keys
     'numlock': 'KEY_NUMLOCK',
     'scrolllock': 'KEY_SCROLLLOCK', 'scroll': 'KEY_SCROLLLOCK',
-    
+
     # Function keys (f1-f24)
     'f1': 'KEY_F1', 'f2': 'KEY_F2', 'f3': 'KEY_F3', 'f4': 'KEY_F4',
     'f5': 'KEY_F5', 'f6': 'KEY_F6', 'f7': 'KEY_F7', 'f8': 'KEY_F8',
@@ -58,7 +57,7 @@ KEY_ALIASES: dict[str, str] = {
     'f13': 'KEY_F13', 'f14': 'KEY_F14', 'f15': 'KEY_F15', 'f16': 'KEY_F16',
     'f17': 'KEY_F17', 'f18': 'KEY_F18', 'f19': 'KEY_F19', 'f20': 'KEY_F20',
     'f21': 'KEY_F21', 'f22': 'KEY_F22', 'f23': 'KEY_F23', 'f24': 'KEY_F24',
-    
+
     # Numpad keys
     'kp0': 'KEY_KP0', 'kp1': 'KEY_KP1', 'kp2': 'KEY_KP2', 'kp3': 'KEY_KP3',
     'kp4': 'KEY_KP4', 'kp5': 'KEY_KP5', 'kp6': 'KEY_KP6', 'kp7': 'KEY_KP7',
@@ -66,7 +65,7 @@ KEY_ALIASES: dict[str, str] = {
     'kpenter': 'KEY_KPENTER', 'kpplus': 'KEY_KPPLUS', 'kpminus': 'KEY_KPMINUS',
     'kpmultiply': 'KEY_KPASTERISK', 'kpdivide': 'KEY_KPSLASH',
     'kpdot': 'KEY_KPDOT', 'kpperiod': 'KEY_KPDOT',
-    
+
     # Media keys
     'mute': 'KEY_MUTE', 'volumemute': 'KEY_MUTE',
     'volumeup': 'KEY_VOLUMEUP', 'volup': 'KEY_VOLUMEUP',
@@ -75,7 +74,7 @@ KEY_ALIASES: dict[str, str] = {
     'stop': 'KEY_STOPCD', 'mediastop': 'KEY_STOPCD',
     'nextsong': 'KEY_NEXTSONG', 'next': 'KEY_NEXTSONG',
     'previoussong': 'KEY_PREVIOUSSONG', 'prev': 'KEY_PREVIOUSSONG',
-    
+
     # Browser keys (for keyboards with browser control buttons)
     'browser': 'KEY_WWW',
     'browserback': 'KEY_BACK',
@@ -83,7 +82,7 @@ KEY_ALIASES: dict[str, str] = {
     'refresh': 'KEY_REFRESH',
     'browsersearch': 'KEY_SEARCH',
     'favorites': 'KEY_BOOKMARKS',
-    
+
     # System keys
     'menu': 'KEY_MENU',
     'print': 'KEY_PRINT', 'printscreen': 'KEY_SYSRQ', 'prtsc': 'KEY_SYSRQ',
@@ -93,43 +92,48 @@ KEY_ALIASES: dict[str, str] = {
 
 class GlobalShortcuts:
     """Handles global keyboard shortcuts using evdev for hardware-level capture"""
-    
-    def __init__(self, primary_key: str = '<f12>', callback: Optional[Callable] = None, device_path: Optional[str] = None):
+
+    def __init__(
+        self,
+        primary_key: str = '<f12>',
+        callback: Optional[Callable] = None,
+        device_path: Optional[str] = None,
+    ):
         self.primary_key = primary_key
         self.callback = callback
         self.selected_device_path = device_path
-        
+
         # Device and event handling
-        self.devices = []
-        self.device_fds = {}
-        self.listener_thread = None
+        self.devices: List[InputDevice] = []
+        self.device_fds: Dict[int, InputDevice] = {}
+        self.listener_thread: Optional[threading.Thread] = None
         self.is_running = False
         self.stop_event = threading.Event()
-        
+
         # State tracking
-        self.pressed_keys = set()
+        self.pressed_keys: Set[int] = set()
         self.last_trigger_time = 0
         self.debounce_time = 0.5  # 500ms debounce to prevent double triggers
-        
+
         # Parse the primary key combination
-        self.target_keys = self._parse_key_combination(primary_key)
-        
+        self.target_keys: Set[int] = self._parse_key_combination(primary_key)
+
         # Initialize keyboard devices
         self._discover_keyboards()
-        
+
         print(f"Global shortcuts initialized with key: {primary_key}")
         print(f"Parsed keys: {[self._keycode_to_name(k) for k in self.target_keys]}")
         print(f"Found {len(self.devices)} keyboard device(s)")
-        
+
     def _discover_keyboards(self):
         """Discover and initialize keyboard input devices"""
         self.devices = []
         self.device_fds = {}
-        
+
         try:
             # Find all input devices
             devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-            
+
             # If a specific device path is selected, only use that device
             if self.selected_device_path:
                 devices = [dev for dev in devices if dev.path == self.selected_device_path]
@@ -137,7 +141,7 @@ class GlobalShortcuts:
                     print(f"Warning: Selected device {self.selected_device_path} not found!")
                     # Fall back to auto-discovery
                     devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-            
+
             for device in devices:
                 # Check if device has keyboard capabilities
                 if self._is_keyboard_device(device):
@@ -145,53 +149,53 @@ class GlobalShortcuts:
                         # Test if we can grab the device (requires root)
                         device.grab()
                         device.ungrab()
-                        
+
                         self.devices.append(device)
                         self.device_fds[device.fd] = device
                         print(f"Added keyboard device: {device.name} ({device.path})")
-                        
+
                         # If we selected a specific device and found it, we can stop here
                         if self.selected_device_path and device.path == self.selected_device_path:
                             break
-                        
+
                     except (OSError, IOError) as e:
                         print(f"Cannot access device {device.name}: {e}")
                         device.close()
-                        
+
         except Exception as e:
             print(f"Error discovering keyboards: {e}")
-            
+
         if not self.devices:
             print("Warning: No accessible keyboard devices found!")
             print("Make sure the application is running with root privileges.")
-    
+
     def _is_keyboard_device(self, device: InputDevice) -> bool:
         """Check if a device is a keyboard by testing for common keyboard keys"""
         capabilities = device.capabilities()
-        
+
         # Check if device has EV_KEY events
         if ecodes.EV_KEY not in capabilities:
             return False
-            
+
         # Check for common keyboard keys
         keys = capabilities[ecodes.EV_KEY]
-        
+
         # Look for alphabetic keys (a good indicator of a keyboard)
         keyboard_keys = [ecodes.KEY_A, ecodes.KEY_S, ecodes.KEY_D, ecodes.KEY_F]
-        
+
         return any(key in keys for key in keyboard_keys)
-    
+
     def _parse_key_combination(self, key_string: str) -> Set[int]:
         """Parse a key combination string into a set of evdev key codes"""
         keys = set()
         key_lower = key_string.lower().strip()
-        
+
         # Remove angle brackets if present
         key_lower = key_lower.replace('<', '').replace('>', '')
-        
+
         # Split into parts for modifier + key combinations
         parts = key_lower.split('+')
-        
+
         for part in parts:
             part = part.strip()
             keycode = self._string_to_keycode(part)
@@ -199,26 +203,26 @@ class GlobalShortcuts:
                 keys.add(keycode)
             else:
                 print(f"Warning: Could not parse key '{part}' in '{key_string}'")
-                
+
         # Default to F12 if no keys parsed
         if not keys:
             print(f"Warning: Could not parse key combination '{key_string}', defaulting to F12")
             keys.add(ecodes.KEY_F12)
-            
+
         return keys
-    
+
     def _string_to_keycode(self, key_string: str) -> Optional[int]:
         """Convert a human-friendly key string into an evdev keycode.
-        
+
         Tries local aliases first, then falls back to evdev-style KEY_* names.
         This hybrid approach supports both user-friendly names (ctrl, super, etc.)
         and direct evdev key names (KEY_COMMA, KEY_1, etc.).
-        
+
         Returns None if no matching keycode is found.
         """
         original = key_string
         key_string = key_string.lower().strip()
-        
+
         # 1. Try alias mapping first, easy names
         if key_string in KEY_ALIASES:
             key_name = KEY_ALIASES[key_string]
@@ -228,23 +232,26 @@ class GlobalShortcuts:
             key_name = key_string.upper()
             if not key_name.startswith('KEY_'):
                 key_name = f'KEY_{key_name}'
-        
+
         # 3. Look up the keycode in evdev's complete mapping
         code = ecodes.ecodes.get(key_name)
 
         if code is None:
             print(f"Warning: Unknown key string '{original}' (resolved to '{key_name}')")
             return None
-        
+
         return code
-    
+
     def _keycode_to_name(self, keycode: int) -> str:
         """Convert evdev keycode to human readable name"""
         try:
-            return ecodes.KEY[keycode].replace('KEY_', '')
+            key_name = ecodes.KEY[keycode]
+            if isinstance(key_name, tuple):
+                key_name = key_name[0]
+            return key_name.replace('KEY_', '')
         except KeyError:
             return f"KEY_{keycode}"
-    
+
     def _event_loop(self):
         """Main event loop for processing keyboard events"""
         try:
@@ -252,11 +259,11 @@ class GlobalShortcuts:
                 if not self.devices:
                     time.sleep(0.1)
                     continue
-                    
+
                 # Use select to wait for events from any device
                 device_fds = [dev.fd for dev in self.devices]
                 ready_fds, _, _ = select.select(device_fds, [], [], 0.1)
-                
+
                 for fd in ready_fds:
                     if fd in self.device_fds:
                         device = self.device_fds[fd]
@@ -268,10 +275,10 @@ class GlobalShortcuts:
                             # Device disconnected or error
                             print(f"Lost connection to device: {device.name}")
                             self._remove_device(device)
-                            
+
         except Exception as e:
             print(f"Error in keyboard event loop: {e}")
-        
+
     def _remove_device(self, device: InputDevice):
         """Remove a disconnected device from monitoring"""
         try:
@@ -280,33 +287,33 @@ class GlobalShortcuts:
             if device.fd in self.device_fds:
                 del self.device_fds[device.fd]
             device.close()
-        except:
+        except Exception:
             pass
-    
+
     def _process_event(self, event):
         """Process individual keyboard events"""
         if event.type == ecodes.EV_KEY:
             key_event = categorize(event)
-            
+
             if key_event.keystate == key_event.key_down:
                 # Key pressed
                 self.pressed_keys.add(event.code)
                 self._check_shortcut_combination()
-                
+
             elif key_event.keystate == key_event.key_up:
                 # Key released
                 self.pressed_keys.discard(event.code)
-    
+
     def _check_shortcut_combination(self):
         """Check if current pressed keys match target combination"""
         if self.target_keys.issubset(self.pressed_keys):
             current_time = time.time()
-            
+
             # Implement debouncing
             if current_time - self.last_trigger_time > self.debounce_time:
                 self.last_trigger_time = current_time
                 self._trigger_callback()
-    
+
     def _trigger_callback(self):
         """Trigger the callback function"""
         if self.callback:
@@ -317,94 +324,96 @@ class GlobalShortcuts:
                 callback_thread.start()
             except Exception as e:
                 print(f"Error calling shortcut callback: {e}")
-    
+
     def start(self) -> bool:
         """Start listening for global shortcuts"""
         if self.is_running:
             return True
-            
+
         # Rediscover keyboards if devices list is empty
         if not self.devices:
             print("Rediscovering keyboard devices...")
             self._discover_keyboards()
-            
+
         if not self.devices:
             print("No keyboard devices available")
             return False
-            
+
         try:
             self.stop_event.clear()
-            self.listener_thread = threading.Thread(target=self._event_loop, daemon=True)
-            self.listener_thread.start()
+            listener_thread = threading.Thread(target=self._event_loop, daemon=True)
+            listener_thread.start()
+            self.listener_thread = listener_thread
             self.is_running = True
-            
+
             print(f"Global shortcuts started, listening for {self.primary_key}")
             return True
-            
+
         except Exception as e:
             print(f"Failed to start global shortcuts: {e}")
             return False
-    
+
     def stop(self):
         """Stop listening for global shortcuts"""
         if not self.is_running:
             return
-            
+
         try:
             self.stop_event.set()
-            
+
             if self.listener_thread and self.listener_thread.is_alive():
                 self.listener_thread.join(timeout=1.0)
-            
+
             # Close all devices
             for device in self.devices[:]:  # Copy list to avoid modification during iteration
                 self._remove_device(device)
-            
+
             self.is_running = False
             self.pressed_keys.clear()
-            
+
         except Exception as e:
             print(f"Error stopping global shortcuts: {e}")
-    
+
     def is_active(self) -> bool:
         """Check if global shortcuts are currently active"""
-        return self.is_running and self.listener_thread and self.listener_thread.is_alive()
-    
+        thread = self.listener_thread
+        return bool(self.is_running and thread and thread.is_alive())
+
     def set_callback(self, callback: Callable):
         """Set the callback function for shortcut activation"""
         self.callback = callback
-    
+
     def update_shortcut(self, new_key: str) -> bool:
         """Update the shortcut key combination"""
         try:
             # Parse the new key combination
             new_target_keys = self._parse_key_combination(new_key)
-            
+
             # Update the configuration
             self.primary_key = new_key
             self.target_keys = new_target_keys
-            
+
             print(f"Updated global shortcut to: {new_key}")
             return True
-            
+
         except Exception as e:
             print(f"Failed to update shortcut: {e}")
             return False
-    
+
     def test_shortcut(self) -> bool:
         """Test if shortcuts are working by temporarily setting a test callback"""
         original_callback = self.callback
         test_triggered = threading.Event()
-        
+
         def test_callback():
             print("Test shortcut triggered!")
             test_triggered.set()
-        
+
         # Set test callback
         self.callback = test_callback
-        
+
         print(f"Press {self.primary_key} within 10 seconds to test...")
-        
+
         # Wait for test trigger
         if test_triggered.wait(timeout=10):
             print("Shortcut test successful!")
@@ -412,11 +421,11 @@ class GlobalShortcuts:
         else:
             print("ERROR: Shortcut test failed - no trigger detected")
             result = False
-        
+
         # Restore original callback
         self.callback = original_callback
         return result
-    
+
     def get_status(self) -> dict:
         """Get the current status of global shortcuts"""
         return {
@@ -427,12 +436,12 @@ class GlobalShortcuts:
             'pressed_keys': [self._keycode_to_name(k) for k in self.pressed_keys],
             'device_count': len(self.devices)
         }
-    
+
     def __del__(self):
         """Cleanup when object is destroyed"""
         try:
             self.stop()
-        except:
+        except Exception:
             pass
 
 # Utility functions for key handling
@@ -442,28 +451,28 @@ def normalize_key_name(key_name: str) -> str:
 
 def get_available_keyboards() -> List[Dict[str, str]]:
     """Get a list of available keyboard devices for selection"""
-    keyboards = []
-    
+    keyboards: List[Dict[str, str]] = []
+
     try:
         devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-        
+
         for device in devices:
             # Check if device has keyboard capabilities
             capabilities = device.capabilities()
             if ecodes.EV_KEY not in capabilities:
                 device.close()
                 continue
-                
+
             # Check for common keyboard keys
             keys = capabilities[ecodes.EV_KEY]
             keyboard_keys = [ecodes.KEY_A, ecodes.KEY_S, ecodes.KEY_D, ecodes.KEY_F]
-            
+
             if any(key in keys for key in keyboard_keys):
                 try:
                     # Test if we can access the device
                     device.grab()
                     device.ungrab()
-                    
+
                     keyboards.append({
                         'name': device.name,
                         'path': device.path,
@@ -476,27 +485,25 @@ def get_available_keyboards() -> List[Dict[str, str]]:
                     device.close()
             else:
                 device.close()
-                
+
     except Exception as e:
         print(f"Error getting available keyboards: {e}")
-    
+
     return keyboards
 
 
-def test_key_accessibility() -> Dict:
+def test_key_accessibility() -> Dict[str, object]:
     """Test which keyboard devices are accessible"""
     print("Testing keyboard device accessibility...")
-    
-    results = {
-        'accessible_devices': [],
-        'inaccessible_devices': [],
-        'total_devices': 0
-    }
-    
+
+    accessible_devices: List[Dict[str, str]] = []
+    inaccessible_devices: List[Dict[str, str]] = []
+    total_devices = 0
+
     try:
         devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-        results['total_devices'] = len(devices)
-        
+        total_devices = len(devices)
+
         for device in devices:
             # Check if it's a keyboard
             capabilities = device.capabilities()
@@ -505,32 +512,36 @@ def test_key_accessibility() -> Dict:
                     # Test accessibility
                     device.grab()
                     device.ungrab()
-                    results['accessible_devices'].append({
+                    accessible_devices.append({
                         'name': device.name,
                         'path': device.path
                     })
                 except (OSError, IOError):
-                    results['inaccessible_devices'].append({
+                    inaccessible_devices.append({
                         'name': device.name,
                         'path': device.path
                     })
                 finally:
                     device.close()
-                    
+
     except Exception as e:
         print(f"Error testing devices: {e}")
-    
-    print(f"Found {len(results['accessible_devices'])} accessible keyboard devices")
-    return results
+
+    print(f"Found {len(accessible_devices)} accessible keyboard devices")
+    return {
+        'accessible_devices': accessible_devices,
+        'inaccessible_devices': inaccessible_devices,
+        'total_devices': total_devices
+    }
 
 
 if __name__ == "__main__":
     # Simple test when run directly
     def test_callback():
         print("Global shortcut activated!")
-    
+
     shortcuts = GlobalShortcuts('F12', test_callback)
-    
+
     if shortcuts.start():
         print("Press F12 to test, or Ctrl+C to exit...")
         try:
@@ -540,5 +551,5 @@ if __name__ == "__main__":
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nStopping...")
-    
+
     shortcuts.stop()
