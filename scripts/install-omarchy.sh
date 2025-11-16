@@ -254,11 +254,14 @@ generate_installation_plan() {
 install_system_dependencies() {
   log_info "Ensuring system dependencies..."
   local pkgs=(cmake make git base-devel python pipewire pipewire-alsa pipewire-pulse pipewire-jack ydotool curl)
-  
+
+  # mise is guaranteed on Omarchy for Python version management
+  log_success "mise is available for Python version management (Omarchy standard)"
+
   # Always install waybar when this script runs (it's designed for full setup)
   pkgs+=(waybar)
   log_info "Installing waybar as part of hyprchrp setup"
-  
+
   local to_install=()
   for p in "${pkgs[@]}"; do pacman -Q "$p" &>/dev/null || to_install+=("$p"); done
   if ((${#to_install[@]})); then
@@ -271,29 +274,47 @@ install_system_dependencies() {
 
 # ----------------------- Python environment --------------------
 setup_python_environment() {
-  log_info "Setting up Python virtual environment…"
-  
+  log_info "Setting up Python environment with mise..."
+
   # Validate requirements.txt exists
   if [ ! -f "$INSTALL_DIR/requirements.txt" ]; then
     log_error "requirements.txt not found at $INSTALL_DIR/requirements.txt"
     return 1
   fi
-  
+
   # Check if pip install is needed based on requirements.txt hash
   local cur_req_hash
   cur_req_hash=$(compute_file_hash "$INSTALL_DIR/requirements.txt")
   local stored_req_hash
   stored_req_hash=$(get_state "requirements_hash")
-  
-  # Always use user space for venv
+
+  # Use mise for Python management (guaranteed on Omarchy)
+  local python_version="3.13.8"
+  log_info "Installing Python $python_version with mise..."
+
+  if ! mise install python@"$python_version"; then
+    log_error "Failed to install Python with mise"
+    return 1
+  fi
+
+  # Get path to mise-managed Python
+  local python_path
+  if ! python_path=$(mise where python@"$python_version"); then
+    log_error "Failed to locate mise Python installation"
+    return 1
+  fi
+
+  log_success "Using mise-managed Python: $python_path"
+
+  # Create venv using mise-managed Python
   if [ ! -d "$VENV_DIR" ]; then
-    log_info "Creating venv at $VENV_DIR"
+    log_info "Creating venv at $VENV_DIR..."
     mkdir -p "$(dirname "$VENV_DIR")"
-    python -m venv "$VENV_DIR"
+    "$python_path/bin/python" -m venv "$VENV_DIR"
   else
     log_info "Venv already exists at $VENV_DIR"
   fi
-  
+
   # Install dependencies from system files
   source "$VENV_DIR/bin/activate"
   local pip_bin="$VENV_DIR/bin/pip"
@@ -301,7 +322,7 @@ setup_python_environment() {
 
   local enable_cuda=false
   local enable_rocm=false
-  
+
   # Detect GPU toolchains
   if command -v nvidia-smi >/dev/null 2>&1 && command -v nvcc >/dev/null 2>&1; then
     enable_cuda=true
@@ -309,7 +330,7 @@ setup_python_environment() {
   elif command -v nvidia-smi >/dev/null 2>&1; then
     log_warning "NVIDIA GPU detected but nvcc compiler missing; pywhispercpp build stays CPU-only"
   fi
-  
+
   if { command -v rocm-smi >/dev/null 2>&1 || [ -d /opt/rocm ]; } && command -v hipcc >/dev/null 2>&1; then
     enable_rocm=true
     log_info "ROCm toolchain detected; enabling GGML_HIP=ON for pywhispercpp build"
@@ -322,10 +343,10 @@ setup_python_environment() {
   if timeout 5s "$VENV_DIR/bin/python" -c "import sounddevice, pywhispercpp" >/dev/null 2>&1; then
     deps_installed=true
   fi
-  
+
   if [ "$cur_req_hash" != "$stored_req_hash" ] || [ -z "$stored_req_hash" ] || [ "$deps_installed" = "false" ]; then
     log_info "Installing Python dependencies (requirements.txt changed or deps missing)"
-    
+
     if [ "$enable_cuda" = true ] || [ "$enable_rocm" = true ]; then
       # GPU build path: install everything except pywhispercpp first
       local tmp_req
@@ -359,7 +380,7 @@ setup_python_environment() {
       # CPU-only path: install everything normally
       "$pip_bin" install -r "$INSTALL_DIR/requirements.txt"
     fi
-    
+
     set_state "requirements_hash" "$cur_req_hash"
     log_success "Python dependencies installed"
   else

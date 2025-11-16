@@ -1,5 +1,5 @@
 [Unit]
-Description=hyprchrp Voice Dictation Service
+Description=hyprchrp Voice Dictation Service (Omarchy mise-first)
 Documentation=https://github.com/goodroot/hyprchrp
 After=graphical-session.target pipewire.service ydotool.service
 Wants=pipewire.service ydotool.service
@@ -7,8 +7,10 @@ Wants=pipewire.service ydotool.service
 [Service]
 Type=simple
 ExecStartPre=/bin/sleep 2
-ExecStart=/usr/lib/hyprchrp/bin/hyprchrp
+ExecStart=/usr/bin/mise exec -- python3 /usr/lib/hyprchrp/lib/main.py
 Environment=HYPRCHRP_ROOT=/usr/lib/hyprchrp
+Environment=MISE_INSTALL_DIR=/usr/lib/hyprchrp
+WorkingDirectory=/usr/lib/hyprchrp
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=10

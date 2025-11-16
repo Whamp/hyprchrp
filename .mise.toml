@@ -1,0 +1,36 @@
+# mise configuration for hyprchrp (Omarchy-first)
+# This file ensures consistent Python versions for development and installation
+
+[tools]
+# Use Python 3.13.8 - latest stable version that supports all dependencies
+# onnxruntime and other key packages don't support Python 3.14 yet
+python = "3.13.8"
+
+[env]
+# Environment variables for hyprchrp development
+PYTHONPATH = "./lib"
+HYPRCHRP_DEV = "1"
+
+[tasks]
+# Core workflow using mise exec
+dev-setup = "./scripts/dev-setup.sh"
+install = "./scripts/install-omarchy.sh"
+hyprchrp = "mise exec -- python lib/main.py"
+
+# Development tasks (using mise exec with mise-managed Python)
+test = "mise exec -- pytest"
+lint = "mise exec -- ruff check ."
+format = "mise exec -- black ."
+type-check = "mise exec -- mypy lib/"
+
+# Production sync (optional uv-based pipeline)
+sync-prod = "./scripts/sync-production.sh"
+
+[alias]
+# Shorthand aliases for common workflow
+i = "install"
+s = "dev-setup"
+r = "hyprchrp"
+t = "test"
+l = "lint"
+f = "format"

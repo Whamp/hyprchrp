@@ -50,10 +50,10 @@ cd hyprchrp
 
 1. ✅ Install system dependencies (ydotool, etc.)
 2. ✅ Copy application files to system directory (`/usr/lib/hyprchrp`)
-3. ✅ Set up Python virtual environment in user space (`~/.local/share/hyprchrp/venv`)
+3. ✅ Set up mise-managed Python environment (Python 3.13.8)
 4. ✅ Install pywhispercpp backend
 5. ✅ Download base model to user space (`~/.local/share/pywhispercpp/models/ggml-base.en.bin`)
-6. ✅ Set up systemd services for hyprchrp & ydotoolds
+6. ✅ Set up systemd services for hyprchrp & ydotool (uses `mise exec` directly)
 7. ✅ Configure Waybar integration
 8. ✅ Test everything works
 
@@ -68,6 +68,66 @@ cd hyprchrp
 5. **Bam!** Text appears in active buffer!
 
 Any snags, please [create an issue](https://github.com/Whamp/hyprchrp/issues/new/choose) or visit [Omarchy Discord](https://discord.com/channels/1390012484194275541/1410373168765468774).
+
+## Development Setup
+
+hyprchrp uses a **mise-first** development workflow. On Omarchy systems, mise is pre-installed and handles Python version management automatically.
+
+### Quick Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/Whamp/hyprchrp.git
+cd hyprchrp
+
+# One-time development environment setup
+./scripts/dev-setup.sh
+
+# Run during development
+mise run hyprchrp          # Run the application
+mise run test             # Run tests
+mise run lint             # Lint code
+mise run format           # Format code
+mise run type-check       # Type checking
+mise run sync-prod        # Sync production requirements
+```
+
+### Development Commands
+
+**mise-first workflow:**
+```bash
+mise run hyprchrp          # Run hyprchrp (main app)
+mise run test             # Run tests
+mise run lint             # Lint code with ruff
+mise run format           # Format code with black
+mise run type-check       # Type checking with mypy
+
+# Shortcuts
+mise run r                 # Run hyprchrp
+mise run t                 # Test
+mise run l                 # Lint
+mise run f                 # Format
+
+# Direct mise exec
+mise exec -- python lib/main.py
+mise exec -- pytest
+mise exec -- black .
+```
+
+**Enhanced workflow (optional uv):**
+```bash
+# uv provides faster dependency management (optional enhancement)
+uv run python lib/main.py   # Run hyprchrp (faster)
+uv run pytest               # Run tests (faster)
+uv add new-package          # Add dependency
+```
+
+### Architecture Notes
+
+- **mise-first**: All Python version management handled by mise
+- **Optional uv**: Enhanced dependency management when available
+- **Production**: Users install with traditional pip/venv - no development tools needed
+- **Consistent**: Same Python 3.13.8 across all Omarchy installations
 
 ## Usage
 
@@ -545,13 +605,14 @@ systemctl --user status hyprchrp.service
 
 ### Systemd integration
 
-**hyprchrp uses systemd for reliable service management:**
+**hyprchrp uses systemd for reliable service management with mise-first execution:**
 
-- **`hyprchrp.service`** - Main application service with auto-restart
+- **`hyprchrp.service`** - Main application service (uses `mise exec -- python3` directly)
 - **`ydotool.service`** - Input injection daemon service
 - **Tray integration** - All tray operations use systemd commands
 - **Process management** - No manual process killing or starting
 - **Service dependencies** - Proper startup/shutdown ordering
+- **mise-first execution** - systemd service runs `mise exec -- python3` for consistent Python environment
 
 ## Getting help
 

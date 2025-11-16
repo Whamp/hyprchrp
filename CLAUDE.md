@@ -52,20 +52,28 @@ journalctl --user -u ydotool.service -f
 # Direct execution (development)
 ./bin/hyprchrp
 
-# Or directly with Python
-source ~/.local/share/hyprchrp/venv/bin/activate
-python3 lib/main.py
+# Or directly with mise
+mise exec -- python3 lib/main.py
 ```
 
 ### Dependencies
-Python dependencies are managed via `requirements.txt`:
+
+**Production Dependencies** (`requirements.txt`):
 - **Audio processing:** sounddevice, numpy, scipy
 - **Global shortcuts:** evdev, pyperclip
 - **Whisper integration:** pywhispercpp (v1.3.3)
 - **Parakeet integration:** onnxruntime (>=1.15.0), onnx-asr (>=0.7.0)
 - **System integration:** psutil, rich
 
-Dependencies are installed into a user-space virtual environment at `~/.local/share/hyprchrp/venv/`.
+**Development Dependencies** (managed via mise, optional uv enhancement):
+- **Testing:** pytest, pytest-cov
+- **Code quality:** black, ruff, mypy
+- **Development tools:** pre-commit
+
+**Dependency Management:**
+- **Development**: Managed via mise (Python 3.13.8) with optional uv for faster dependency management
+- **Production**: `requirements.txt` generated from mise/uv development environment
+- **Installation**: Production dependencies installed into user-space venv at `~/.local/share/hyprchrp/venv/` (created with mise Python)
 
 ### Service Management
 The application uses two systemd services:
@@ -73,6 +81,109 @@ The application uses two systemd services:
 - **ydotool.service** - Input injection daemon
 
 Both are user-level services (no root required).
+
+## Development Workflow
+
+### Developer Setup (mise-first)
+
+This project uses **mise** for Python version management and execution. **uv** is optional for enhanced dependency management. End users never need to install these tools - they're only used during development.
+
+**mise is guaranteed on Omarchy systems** - no installation needed.
+
+**Developer Setup**
+```bash
+# Initial developer setup (one-time)
+./scripts/dev-setup.sh
+
+# mise-first development commands
+mise run hyprchrp                   # Run the application
+mise run test                      # Run tests
+mise run lint                      # Lint code
+mise run format                    # Format code
+mise run type-check                # Type checking
+mise run sync-prod                 # Sync production requirements
+
+# mise shortcuts
+mise run r                          # Run hyprchrp
+mise run t                          # Test
+mise run l                          # Lint
+mise run f                          # Format
+
+# Direct mise exec
+mise exec -- python lib/main.py    # Run the application
+mise exec -- pytest                # Run tests
+mise exec -- black .               # Format code
+mise exec -- ruff check .          # Lint code
+```
+
+**Enhanced Workflow (with optional uv)**
+```bash
+# uv provides faster dependency management (optional)
+uv run python lib/main.py          # Run hyprchrp (faster)
+uv run pytest                      # Run tests (faster)
+uv run black .                     # Format code (faster)
+uv add new-package                 # Add dependency
+./scripts/sync-production.sh       # Update production requirements
+```
+
+### Production Sync Workflow
+
+After making changes to dependencies in development, sync to production:
+
+```bash
+# Generate production artifacts from uv development environment
+./scripts/sync-production.sh
+
+# This creates:
+# - requirements.txt        - Production dependencies (pip-compatible)
+# - requirements-dev.txt    - Development dependencies (for reference)
+# - dependency-tree.txt     - Dependency tree documentation
+```
+
+### Project Structure
+
+```
+hyprchrp/
+├── .mise.toml                   # mise configuration (Python version management + tasks)
+├── pyproject.toml              # Project configuration
+├── requirements.txt            # Production dependencies (for end users)
+├── scripts/
+│   ├── dev-setup.sh           # Developer environment setup (mise-first)
+│   ├── sync-production.sh     # Generate production requirements
+│   └── update-deps.sh         # Dependency management helper
+├── bin/hyprchrp                # Legacy launcher script (backwards compatibility)
+├── config/systemd/hyprchrp.service # systemd service (mise exec)
+└── [existing files...]
+```
+
+### Key Benefits
+
+**For Developers:**
+- **mise-first workflow**: Consistent Python environment management across Omarchy
+- **Simple setup**: Single tool (mise) handles Python version and execution
+- **Optional uv enhancement**: Faster dependency management when available
+- **Modern tooling**: Clean mise task-based workflow
+- **IDE integration**: Perfect Python environment detection
+
+**For End Users:**
+- **Zero changes**: Same installation process and commands
+- **No development tools required**: Users never need uv or mise
+- **Automatic Python version control**: mise ensures compatible Python 3.13.8
+- **Faster installs**: Production uses mise-optimized requirements
+- **Reliable execution**: Proven pip/venv approach with mise-managed Python
+
+**Workflow:**
+1. **Development**: Use mise-first workflow (uv optional for speed)
+2. **CI/CD**: Run `sync-production.sh` before releases
+3. **Production**: Users install using traditional pip/venv with mise-managed Python
+4. **Maintenance**: Update deps in dev, sync to production automatically
+
+**Omarchy Advantages:**
+- **Guaranteed mise**: All Omarchy systems have mise pre-installed
+- **Consistent environments**: Same Python version across all installations
+- **Simplified debugging**: Single source of truth for Python management
+- **Future-proof**: Easy Python version transitions
+- **Reduced complexity**: No fallback code or system Python detection
 
 ## Architecture
 
@@ -254,3 +365,93 @@ Click interactions:
 - numpy, scipy - Audio processing
 - psutil - System utilities
 - rich - Terminal formatting
+
+## Troubleshooting
+
+### Python Version Issues
+
+**Problem**: Installation fails with Python version errors or dependency installation failures.
+
+**Solution**: On Omarchy, mise should handle Python automatically. If issues occur:
+
+```bash
+# Verify mise is working (should be pre-installed on Omarchy)
+mise --version
+mise where python@3.13.8
+
+# Re-run installation (mise should install correct Python automatically)
+./scripts/install-omarchy.sh
+
+# If mise is not working on your Omarchy system:
+curl https://mise.run | sh
+source ~/.bashrc
+mise install python@3.13.8
+./scripts/install-omarchy.sh
+```
+
+**Check Python environment:**
+```bash
+# Check mise Python installation
+mise exec -- python --version
+
+# Verify correct Python version (should be 3.13.8)
+mise exec -- python -c "import sys; print(sys.version)"
+
+# Check what the installer will use
+./scripts/install-omarchy.sh --check
+```
+
+### mise Issues
+
+**Problem**: mise commands not working or Python installation fails.
+
+**Solution:**
+```bash
+# Ensure mise is available (should be on Omarchy)
+command -v mise || { echo "mise missing - this shouldn't happen on Omarchy"; exit 1; }
+
+# Reset mise Python installation
+mise uninstall python@3.13.8
+mise install python@3.13.8
+
+# Verify mise setup
+mise where python@3.13.8
+mise exec -- python --version
+```
+
+### Development Environment Issues
+
+**Problem**: mise tasks not working after dev-setup.
+
+**Solution:**
+```bash
+# Verify mise is properly activated
+mise run hyprchrp --version 2>/dev/null || {
+    echo "mise not properly activated"
+    eval "$(mise activate bash)"
+    mise run hyprchrp --version
+}
+
+# Re-run setup
+./scripts/dev-setup.sh
+
+# Try direct mise exec
+mise exec -- python lib/main.py --version
+```
+
+### Service Issues
+
+**Problem**: systemd service fails to start with mise errors.
+
+**Solution:**
+```bash
+# Check mise availability for systemd
+systemctl --user status hyprchrp.service
+journalctl --user -u hyprchrp.service -f
+
+# Test mise exec directly
+/usr/bin/mise exec -- python /usr/lib/hyprchrp/lib/main.py --version
+
+# If mise is not available to systemd, fall back to traditional launcher:
+# The bin/hyprchrp script still works as a fallback
+```
