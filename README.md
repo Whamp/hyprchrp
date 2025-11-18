@@ -632,7 +632,7 @@ systemctl --user status hyprchrp.service
 1. **Check logs**: `journalctl --user -u hyprchrp.service` `journalctl --user -u ydotool.service`
 2. **Verify permissions**: Run the permissions fix script
 3. **Test components**: Check ydotool, audio devices, whisper.cpp
-4. **Report issues**: [Create an issue](https://github.com/Whamp/hyprchrp/issues/new/choose) or visit [Omarchy Discord](https://discord.com/channels/1390012484194275541/1410373168765468774) - logging info helpful!
+4. **Report issues**: [Create an issue](https://github.com/Whamp/hyprchrp/issues/new/choose) - logging info helpful!
 
 ## License
 
