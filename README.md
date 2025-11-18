@@ -67,7 +67,7 @@ cd hyprchrp
 4. **Press `Super+Alt+D`** again to stop dictation - _boop!_
 5. **Bam!** Text appears in active buffer!
 
-Any snags, please [create an issue](https://github.com/Whamp/hyprchrp/issues/new/choose) or visit [Omarchy Discord](https://discord.com/channels/1390012484194275541/1410373168765468774).
+Any snags, please [create an issue](https://github.com/Whamp/hyprchrp/issues/new/choose).
 
 ## Development Setup
 
