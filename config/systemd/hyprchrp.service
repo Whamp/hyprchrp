@@ -1,6 +1,6 @@
 [Unit]
 Description=hyprchrp Voice Dictation Service (Omarchy mise-first)
-Documentation=https://github.com/goodroot/hyprchrp
+Documentation=https://github.com/Whamp/hyprchrp
 After=graphical-session.target pipewire.service ydotool.service
 Wants=pipewire.service ydotool.service
 
